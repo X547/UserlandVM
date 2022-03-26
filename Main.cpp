@@ -107,6 +107,11 @@ int32 ThreadEntry(void *arg)
 	tls[TLS_THREAD_ID_SLOT] = find_thread(NULL);
 	tls[TLS_USER_THREAD_SLOT] = (addr_t)&userThread;
 
+	static uint32 threadExitCode[] = {
+		0x03800293, // addi	t0, zero, 56 // _kern_exit_thread
+		0x00000073, // ecall
+	};
+
 	rvvm_machine_t machine{};
 	rvvm_hart_t vm{};
 	tVm = &vm;
@@ -119,6 +124,7 @@ int32 ThreadEntry(void *arg)
 	};
 	maxlen_t mstatus = 0xA00000000 + (FS_INITIAL << 13);
 	riscv_csr_op(&vm, 0x300, &mstatus, CSR_SWAP);
+	vm.registers[REGISTER_X1] = (addr_t)&threadExitCode;
 	vm.registers[REGISTER_X2] = (addr_t)stack + stackSize;
 	vm.registers[REGISTER_X4] = (addr_t)&tls;
 	vm.registers[REGISTER_X10] = (addr_t)attributes->args1;
