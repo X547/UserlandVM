@@ -2,7 +2,7 @@
 #include <private/system/syscalls.h>
 #include <stdlib.h>
 
-thread_id	vm_spawn_thread(struct thread_creation_attributes* attributes);
+thread_id vm_spawn_thread(struct thread_creation_attributes* attributes);
 
 
 void DispatchSyscall(uint32 op, uint64 *args, uint64 *_returnValue)

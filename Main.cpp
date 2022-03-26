@@ -28,7 +28,6 @@ extern "C" {
 void *__gCommPageAddress;
 
 thread_local rvvm_hart_t *tVm = NULL;
-thread_local struct thread_creation_attributes tThreadCreateAttrs{};
 bool gInSignalHandler = false;
 
 
@@ -42,7 +41,7 @@ void WritePC(uint64 pc)
 			return;
 		}
 	}
-			printf("%#" B_PRIx64, pc);
+	printf("%#" B_PRIx64, pc);
 }
 
 void StackTrace()
@@ -130,7 +129,7 @@ int32 ThreadEntry(void *arg)
 	return vm.registers[REGISTER_X10];
 }
 
-thread_id	vm_spawn_thread(struct thread_creation_attributes* attributes)
+thread_id vm_spawn_thread(struct thread_creation_attributes* attributes)
 {
 	printf("vm_spawn_thread\n");
 	printf("  entry: %p\n", attributes->entry);
