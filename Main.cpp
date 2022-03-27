@@ -25,7 +25,7 @@ extern "C" {
 #include <private/system/user_thread_defs.h>
 #include <private/libroot/pthread_private.h>
 
-void *__gCommPageAddress;
+extern void *__gCommPageAddress;
 
 thread_local rvvm_hart_t *tVm = NULL;
 bool gInSignalHandler = false;
@@ -89,10 +89,10 @@ extern "C" void riscv_trap(rvvm_hart_t* vm, bitcnt_t cause, maxlen_t tval)
 int32 ThreadEntry(void *arg)
 {
 	ObjectDeleter<thread_creation_attributes> attributes((thread_creation_attributes*)arg);
-	printf("ThreadEntry\n");
-	printf("  entry: %p\n", attributes->entry);
-	printf("  args1: %p\n", attributes->args1);
-	printf("  args2: %p\n", attributes->args2);
+	//printf("ThreadEntry\n");
+	//printf("  entry: %p\n", attributes->entry);
+	//printf("  args1: %p\n", attributes->args1);
+	//printf("  args2: %p\n", attributes->args2);
 
 	size_t stackSize = 0x100000;
 	void *stack;
@@ -130,6 +130,7 @@ int32 ThreadEntry(void *arg)
 	vm.registers[REGISTER_X10] = (addr_t)attributes->args1;
 	vm.registers[REGISTER_X11] = (addr_t)attributes->args2;
 	vm.registers[REGISTER_PC] = (addr_t)attributes->entry;
+	attributes.Unset();
 	riscv_hart_run(&vm);
 
 	return vm.registers[REGISTER_X10];
@@ -137,10 +138,10 @@ int32 ThreadEntry(void *arg)
 
 thread_id vm_spawn_thread(struct thread_creation_attributes* attributes)
 {
-	printf("vm_spawn_thread\n");
-	printf("  entry: %p\n", attributes->entry);
-	printf("  args1: %p\n", attributes->args1);
-	printf("  args2: %p\n", attributes->args2);
+	//printf("vm_spawn_thread\n");
+	//printf("  entry: %p\n", attributes->entry);
+	//printf("  args1: %p\n", attributes->args1);
+	//printf("  args2: %p\n", attributes->args2);
 	ObjectDeleter<struct thread_creation_attributes> guestAttrs(new struct thread_creation_attributes());
 	memcpy(guestAttrs.Get(), attributes, sizeof(thread_creation_attributes));
 	thread_id thread = spawn_thread(ThreadEntry, attributes->name, attributes->priority, guestAttrs.Detach());
@@ -201,17 +202,6 @@ void BuildArgs(ArrayDeleter<uint8> &mem, user_space_program_args &args, char **a
 	args.env_count = envCnt;
 	args.args = (char**)&mem[0];
 	args.env = (char**)&mem[0] + (argCnt + 1);
-/*
-	printf("args:\n");
-	for (char **it = args.args; *it != NULL; it++) {
-		printf("%s\n", *it);
-	}
-	printf("env:\n");
-	for (char **it = args.env; *it != NULL; it++) {
-		printf("%s\n", *it);
-	}
-*/
-	//exit(0);
 }
 
 int main(int argc, char **argv)
