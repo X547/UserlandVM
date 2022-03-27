@@ -60,8 +60,8 @@ void ElfImage::LoadSegments()
 
 void ElfImage::Relocate()
 {
-	Address relocAdr, relocSize;
-	Address pltRelocAdr, pltRelocSize;
+	Address relocAdr = 0, relocSize = 0;
+	Address pltRelocAdr = 0, pltRelocSize = 0;
 	if (fDynamic == NULL) return;
 	for (Elf64_Dyn *dyn = fDynamic; dyn->d_tag != DT_NULL; dyn++) {
 		switch (dyn->d_tag) {
@@ -94,7 +94,7 @@ void ElfImage::DoRelocate(Elf64_Rela *reloc, Address count)
 				*dst = src;
 				break;
 			case R_RISCV_RELATIVE:
-				*dst = (Address)FromVirt(*dst);
+				*dst = (Address)FromVirt(*dst + src);
 				break;
 			default:
 				abort();

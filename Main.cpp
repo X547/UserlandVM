@@ -31,6 +31,16 @@ thread_local rvvm_hart_t *tVm = NULL;
 bool gInSignalHandler = false;
 
 
+void *GetImageBase(const char *name)
+{
+	int32 cookie = 0;
+	image_info info;
+	while (get_next_image_info(B_CURRENT_TEAM, &cookie, &info) >= B_OK) {
+		if (strcmp(basename(info.name), name) == 0) return info.text;
+	}
+	return NULL;
+}
+
 void WritePC(uint64 pc)
 {
 	int32 cookie = 0;
@@ -150,7 +160,7 @@ thread_id vm_spawn_thread(struct thread_creation_attributes* attributes)
 
 void SignalHandler(int sig, siginfo_t *info, ucontext_t *ctx, void *arg)
 {
-	printf("SignalHandler\n");
+	printf("SignalHandler(%d)\n", sig);
 	if (gInSignalHandler) {
 		exit(0);
 	}
@@ -226,12 +236,15 @@ int main(int argc, char **argv)
 	tls[TLS_THREAD_ID_SLOT] = find_thread(NULL);
 	tls[TLS_USER_THREAD_SLOT] = (addr_t)tls_get(TLS_USER_THREAD_SLOT);
 
-	struct sigaction oldAction;
+	int signals[] = {SIGILL, SIGSEGV};
+	struct sigaction oldAction[B_COUNT_OF(signals)];
 	struct sigaction action {
 		.sa_sigaction = (__siginfo_handler_t)SignalHandler,
 		.sa_flags = SA_SIGINFO
 	};
-	sigaction(SIGSEGV, &action, &oldAction);
+	for (int i = 0; i < B_COUNT_OF(signals); i++) {
+		sigaction(signals[i], &action, &oldAction[i]);
+	}
 
 	rvvm_machine_t machine{};
 	rvvm_hart_t vm{};
@@ -252,7 +265,9 @@ int main(int argc, char **argv)
 	vm.registers[REGISTER_PC] = (addr_t)image->GetEntry();
 	riscv_hart_run(&vm);
 
-	sigaction(SIGSEGV, &oldAction, NULL);
+	for (int i = 0; i < B_COUNT_OF(signals); i++) {
+		sigaction(signals[i], &oldAction[i], NULL);
+	}
 
 	return 0;
 }
