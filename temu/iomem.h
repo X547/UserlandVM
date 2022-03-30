@@ -43,7 +43,7 @@ typedef uint32_t DeviceReadFunc(void *opaque, uint32_t offset, int size_log2);
 
 typedef struct PhysMemoryMap PhysMemoryMap;
 
-typedef struct {
+typedef struct PhysMemoryRange {
     PhysMemoryMap *map;
     uint64_t addr;
     uint64_t org_size; /* original size */

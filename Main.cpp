@@ -1,14 +1,6 @@
-extern "C" {
-#include "rvvm/rvvm.h"
-#include "rvvm/riscv_hart.h"
-#include "rvvm/riscv_csr.h"
-}
-
 #include <private/system/user_runtime.h>
 #include <private/kernel/ksyscalls.h>
 #include "syscall_table.h"
-#include "Loader.h"
-#include "Syscalls.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -25,10 +17,22 @@ extern "C" {
 #include <private/system/user_thread_defs.h>
 #include <private/libroot/pthread_private.h>
 
+#include "Loader.h"
+#include "Syscalls.h"
+#include "VirtualCpu.h"
+#include "VirtualCpuTemu.h"
+#include "VirtualCpuRvvm.h"
+
+
 extern void *__gCommPageAddress;
 
-thread_local rvvm_hart_t *tVm = NULL;
+thread_local VirtualCpu *tCpu = NULL;
 bool gInSignalHandler = false;
+
+
+//#pragma mark -
+
+typedef VirtualCpuTemu VirtualCpuDefault;
 
 
 void *GetImageBase(const char *name)
@@ -56,9 +60,9 @@ void WritePC(uint64 pc)
 
 void StackTrace()
 {
-	uint64 pc = tVm->registers[REGISTER_PC];
-	uint64 sp = tVm->registers[REGISTER_X2];
-	uint64 fp = tVm->registers[REGISTER_X8];
+	uint64 pc = tCpu->Pc();
+	uint64 sp = tCpu->Regs()[2];
+	uint64 fp = tCpu->Regs()[8];
 	
 	for (;;) {
 		printf("FP: %#" B_PRIx64 ", PC: ", fp); WritePC(pc); printf("\n");
@@ -68,48 +72,44 @@ void StackTrace()
 	}
 }
 
-extern "C" void riscv_trap(rvvm_hart_t* vm, bitcnt_t cause, maxlen_t tval)
+static void HaikuTrap()
 {
-	//rvvm_info("Hart %p trap at %#08" PRIxXLEN ", cause %x, tval %#08" PRIxXLEN, vm, vm->registers[REGISTER_PC], cause, tval);
-	switch (cause) {
+	//printf("HaikuTrap: Hart %p trap at %#08" PRIxXLEN ", cause %x, tval %#08" PRIxXLEN "\n", tCpu, tCpu->Pc(), tCpu->Cause(), tCpu->Tval());
+	switch (tCpu->Cause()) {
+		case -1:
+			break;
 		case TRAP_ENVCALL_MMODE: {
-			uint64 syscall = vm->registers[REGISTER_X5];
+			uint64 syscall = tCpu->Regs()[5];
 			//printf("syscall %" B_PRIu64 "(%s)\n", syscall, syscall < (uint64)kSyscallCount ? kExtendedSyscallInfos[syscall].name : "?");
 
 			uint64 args[20];
 			if (syscall < (uint64)kSyscallCount) {
 				uint32 argCnt = kExtendedSyscallInfos[syscall].parameter_count;
-				memcpy(&args[0], &vm->registers[REGISTER_X10], sizeof(uint64)*std::min<uint32>(argCnt, 8));
+				memcpy(&args[0], &tCpu->Regs()[10], sizeof(uint64)*std::min<uint32>(argCnt, 8));
 				if (argCnt > 8) {
-					memcpy(&args[8], (void*)vm->registers[REGISTER_X2], sizeof(uint64)*(argCnt - 8));
+					memcpy(&args[8], (void*)tCpu->Regs()[2], sizeof(uint64)*(argCnt - 8));
 				}
 			}
 
-			DispatchSyscall(syscall, args, &vm->registers[REGISTER_X10]);
+			DispatchSyscall(syscall, args, &tCpu->Regs()[10]);
 			break;
 		}
 		default:
-			printf("[!] unhandled trap\n");
+			printf("[!] unhandled trap: Hart %p trap at %#08" PRIxXLEN ", cause %x, tval %#08" PRIxXLEN "\n", tCpu, tCpu->Pc(), tCpu->Cause(), tCpu->Tval());
 			StackTrace();
 			fgetc(stdin);
 			_exit(1);
 	}
 }
 
-int32 ThreadEntry(void *arg)
+status_t HaikuThreadStart(pthread_t pthread, uint64 entry, uint64 arg1, uint64 arg2)
 {
-	ObjectDeleter<thread_creation_attributes> attributes((thread_creation_attributes*)arg);
-	//printf("ThreadEntry\n");
-	//printf("  entry: %p\n", attributes->entry);
-	//printf("  args1: %p\n", attributes->args1);
-	//printf("  args2: %p\n", attributes->args2);
-
 	size_t stackSize = 0x100000;
 	void *stack;
 	AreaDeleter stackArea(create_area("image", &stack, B_ANY_ADDRESS, stackSize, B_NO_LOCK, B_READ_AREA | B_WRITE_AREA));
 
 	user_thread userThread {
-		.pthread = (pthread_t)attributes->args2
+		.pthread = pthread
 	};
 
 	uint64 tls[TLS_MAX_KEYS]{};
@@ -122,36 +122,31 @@ int32 ThreadEntry(void *arg)
 		0x00000073, // ecall
 	};
 
-	rvvm_machine_t machine{};
-	rvvm_hart_t vm{};
-	tVm = &vm;
-	riscv_hart_init(&vm, true);
-	vm.machine = &machine;
-	vm.mem = rvvm_ram_t{
-		.begin = 0x1000,
-		.size = (paddr_t)(-0x1000),
-		.data = (vmptr_t)0x1000
-	};
-	maxlen_t mstatus = 0xA00000000 + (FS_INITIAL << 13);
-	riscv_csr_op(&vm, 0x300, &mstatus, CSR_SWAP);
-	vm.registers[REGISTER_X1] = (addr_t)&threadExitCode;
-	vm.registers[REGISTER_X2] = (addr_t)stack + stackSize;
-	vm.registers[REGISTER_X4] = (addr_t)&tls;
-	vm.registers[REGISTER_X10] = (addr_t)attributes->args1;
-	vm.registers[REGISTER_X11] = (addr_t)attributes->args2;
-	vm.registers[REGISTER_PC] = (addr_t)attributes->entry;
-	attributes.Unset();
-	riscv_hart_run(&vm);
+	VirtualCpuDefault cpu;
+	tCpu = &cpu;
+	cpu.Regs()[1] = (addr_t)&threadExitCode;
+	cpu.Regs()[2] = (addr_t)stack + stackSize;
+	cpu.Regs()[4] = (addr_t)&tls;
+	cpu.Regs()[10] = arg1;
+	cpu.Regs()[11] = arg2;
+	cpu.Pc() = entry;
+	for (;;) {
+		cpu.Run();
+		HaikuTrap();
+	}
+	tCpu = NULL;
 
-	return vm.registers[REGISTER_X10];
+	return cpu.Regs()[10];
+}
+
+int32 ThreadEntry(void *arg)
+{
+	ObjectDeleter<thread_creation_attributes> attributes((thread_creation_attributes*)arg);
+	return HaikuThreadStart((pthread_t)attributes->args2, (addr_t)attributes->entry, (addr_t)attributes->args1, (addr_t)attributes->args2);
 }
 
 thread_id vm_spawn_thread(struct thread_creation_attributes* attributes)
 {
-	//printf("vm_spawn_thread\n");
-	//printf("  entry: %p\n", attributes->entry);
-	//printf("  args1: %p\n", attributes->args1);
-	//printf("  args2: %p\n", attributes->args2);
 	ObjectDeleter<struct thread_creation_attributes> guestAttrs(new struct thread_creation_attributes());
 	memcpy(guestAttrs.Get(), attributes, sizeof(thread_creation_attributes));
 	thread_id thread = spawn_thread(ThreadEntry, attributes->name, attributes->priority, guestAttrs.Detach());
@@ -216,13 +211,7 @@ void BuildArgs(ArrayDeleter<uint8> &mem, user_space_program_args &args, char **a
 
 int main(int argc, char **argv)
 {
-	rvvm_set_loglevel(LOG_INFO);
-
 	ObjectDeleter<ElfImage> image(ElfImage::Load("../runtime_loader"));
-
-	size_t stackSize = 0x100000;
-	void *stack;
-	AreaDeleter stackArea(create_area("image", &stack, B_ANY_ADDRESS, stackSize, B_NO_LOCK, B_READ_AREA | B_WRITE_AREA));
 
 	user_space_program_args args{};
 	ArrayDeleter<uint8> argsMem;
@@ -230,11 +219,6 @@ int main(int argc, char **argv)
 	BuildArgs(argsMem, args, argv + 1, env);
 
 	void *commpage = __gCommPageAddress;
-
-	uint64 tls[TLS_MAX_KEYS]{};
-	tls[TLS_BASE_ADDRESS_SLOT] = (addr_t)&tls;
-	tls[TLS_THREAD_ID_SLOT] = find_thread(NULL);
-	tls[TLS_USER_THREAD_SLOT] = (addr_t)tls_get(TLS_USER_THREAD_SLOT);
 
 	int signals[] = {SIGILL, SIGSEGV};
 	struct sigaction oldAction[B_COUNT_OF(signals)];
@@ -246,28 +230,11 @@ int main(int argc, char **argv)
 		sigaction(signals[i], &action, &oldAction[i]);
 	}
 
-	rvvm_machine_t machine{};
-	rvvm_hart_t vm{};
-	tVm = &vm;
-	riscv_hart_init(&vm, true);
-	vm.machine = &machine;
-	vm.mem = rvvm_ram_t{
-		.begin = 0x1000,
-		.size = (paddr_t)(-0x1000),
-		.data = (vmptr_t)0x1000
-	};
-	maxlen_t mstatus = 0xA00000000 + (FS_INITIAL << 13);
-	riscv_csr_op(&vm, 0x300, &mstatus, CSR_SWAP);
-	vm.registers[REGISTER_X2] = (addr_t)stack + stackSize;
-	vm.registers[REGISTER_X4] = (addr_t)&tls;
-	vm.registers[REGISTER_X10] = (addr_t)&args;
-	vm.registers[REGISTER_X11] = (addr_t)commpage;
-	vm.registers[REGISTER_PC] = (addr_t)image->GetEntry();
-	riscv_hart_run(&vm);
+	status_t res = HaikuThreadStart(NULL, (addr_t)image->GetEntry(), (addr_t)&args, (addr_t)commpage);
 
 	for (int i = 0; i < B_COUNT_OF(signals); i++) {
 		sigaction(signals[i], &oldAction[i], NULL);
 	}
 
-	return 0;
+	return res;
 }

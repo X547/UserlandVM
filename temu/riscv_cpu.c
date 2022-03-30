@@ -29,6 +29,8 @@
 #include <assert.h>
 #include <fcntl.h>
 
+#include <OS.h> // system_time()
+
 #include "cutils.h"
 #include "iomem.h"
 #include "riscv_cpu.h"
@@ -743,6 +745,9 @@ static int csr_read(RISCVCPUState *s, target_ulong *pval, uint32_t csr,
         }
         val = (int64_t)s->insn_counter;
         break;
+    case 0xc01: /* utime */
+        val = system_time();
+        break;
     case 0xc80: /* mcycleh */
     case 0xc82: /* minstreth */
         if (s->cur_xlen != 32)
@@ -827,6 +832,12 @@ static int csr_read(RISCVCPUState *s, target_ulong *pval, uint32_t csr,
         break;
     case 0x344:
         val = s->mip;
+        break;
+    case 0x3a0 ... 0x3a3: /* pmpcfg0..3 */
+        val = 0; /* not implemented */
+        break;
+    case 0x3b0 ... 0x3bf: /* pmpaddr0..15 */
+        val = 0; /* not implemented */
         break;
     case 0xb00: /* mcycle */
     case 0xb02: /* minstret */
@@ -1008,6 +1019,12 @@ static int csr_write(RISCVCPUState *s, uint32_t csr, target_ulong val)
     case 0x344:
         mask = MIP_SSIP | MIP_STIP;
         s->mip = (s->mip & ~mask) | (val & mask);
+        break;
+    case 0x3a0 ... 0x3a3: /* pmpcfg0..3 */
+        /* not implemented */
+        break;
+    case 0x3b0 ... 0x3bf: /* pmpaddr0..15 */
+        /* not implemented */
         break;
     default:
 #ifdef DUMP_INVALID_CSR

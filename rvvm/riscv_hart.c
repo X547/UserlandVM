@@ -68,7 +68,7 @@ void riscv_hart_init(rvvm_hart_t* vm, bool rv64)
 void riscv_hart_run(rvvm_hart_t* vm)
 {
     uint32_t events;
-    rvvm_info("Hart %p started", vm);
+    //rvvm_info("Hart %p started", vm);
     atomic_store_uint32(&vm->wait_event, HART_RUNNING);
 #ifdef USE_SJLJ
     setjmp(vm->unwind);
@@ -96,7 +96,7 @@ void riscv_hart_run(rvvm_hart_t* vm)
         }
 
         if (events & EXT_EVENT_PAUSE) {
-            rvvm_info("Hart %p stopped", vm);
+            //rvvm_info("Hart %p stopped", vm);
             return;
         }
 

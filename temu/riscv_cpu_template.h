@@ -1719,8 +1719,9 @@ static void no_inline glue(riscv_cpu_interp_x, XLEN)(RISCVCPUState *s,
     s->pc = GET_PC();
     if (s->pending_exception >= 0) {
         /* Note: the idea is that one exception counts for one cycle. */
-        s->n_cycles--; 
-        raise_exception2(s, s->pending_exception, s->pending_tval);
+        s->power_down_flag = TRUE;
+        s->n_cycles--;
+        //raise_exception2(s, s->pending_exception, s->pending_tval);
     }
     /* we exit because XLEN may have changed */
  done_interp:
