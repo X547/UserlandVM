@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 thread_id vm_spawn_thread(struct thread_creation_attributes* attributes);
+void vm_exit_thread(status_t returnValue);
 
 
 void DispatchSyscall(uint32 op, uint64 *args, uint64 *_returnValue)
@@ -177,7 +178,7 @@ void DispatchSyscall(uint32 op, uint64 *args, uint64 *_returnValue)
 			*_returnValue = _kern_kill_thread((thread_id)*(long*)args);
 			break;
 		case 56:
-			 _kern_exit_thread((status_t)*(long*)args);
+			 vm_exit_thread((status_t)*(long*)args);
 			break;
 		case 57:
 			*_returnValue = _kern_cancel_thread((thread_id)*(long*)args, *(void ( * *) ( int ))((char*)args + 8));

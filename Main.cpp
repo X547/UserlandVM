@@ -27,10 +27,11 @@
 extern void *__gCommPageAddress;
 
 thread_local VirtualCpu *tCpu = NULL;
+thread_local bool tThreadExit = false;
+thread_local status_t tThreadReturnValue = B_OK;
+
 bool gInSignalHandler = false;
 
-
-//#pragma mark -
 
 typedef VirtualCpuTemu VirtualCpuDefault;
 
@@ -106,7 +107,7 @@ status_t HaikuThreadStart(pthread_t pthread, uint64 entry, uint64 arg1, uint64 a
 {
 	size_t stackSize = 0x100000;
 	void *stack;
-	AreaDeleter stackArea(create_area("image", &stack, B_ANY_ADDRESS, stackSize, B_NO_LOCK, B_READ_AREA | B_WRITE_AREA));
+	AreaDeleter stackArea(create_area("thread", &stack, B_ANY_ADDRESS, stackSize, B_NO_LOCK, B_READ_AREA | B_WRITE_AREA));
 
 	user_thread userThread {
 		.pthread = pthread
@@ -130,13 +131,13 @@ status_t HaikuThreadStart(pthread_t pthread, uint64 entry, uint64 arg1, uint64 a
 	cpu.Regs()[10] = arg1;
 	cpu.Regs()[11] = arg2;
 	cpu.Pc() = entry;
-	for (;;) {
+	while (!tThreadExit) {
 		cpu.Run();
 		HaikuTrap();
 	}
 	tCpu = NULL;
 
-	return cpu.Regs()[10];
+	return tThreadReturnValue;
 }
 
 int32 ThreadEntry(void *arg)
@@ -151,6 +152,12 @@ thread_id vm_spawn_thread(struct thread_creation_attributes* attributes)
 	memcpy(guestAttrs.Get(), attributes, sizeof(thread_creation_attributes));
 	thread_id thread = spawn_thread(ThreadEntry, attributes->name, attributes->priority, guestAttrs.Detach());
 	return thread;
+}
+
+void vm_exit_thread(status_t returnValue)
+{
+	tThreadExit = true;
+	tThreadReturnValue = returnValue;
 }
 
 void SignalHandler(int sig, siginfo_t *info, ucontext_t *ctx, void *arg)
