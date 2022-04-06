@@ -3,8 +3,10 @@
 #include "syscall_table.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <libgen.h>
+#include <time.h>
 #include <algorithm>
 
 #include <signal.h>
@@ -16,6 +18,8 @@
 #include <private/system/thread_defs.h>
 #include <private/system/user_thread_defs.h>
 #include <private/libroot/pthread_private.h>
+#include <private/system/commpage_defs.h>
+#include <private/system/arch/riscv64/arch_commpage_defs.h>
 
 #include "Loader.h"
 #include "Syscalls.h"
@@ -35,6 +39,23 @@ bool gInSignalHandler = false;
 
 typedef VirtualCpuTemu VirtualCpuDefault;
 
+
+area_id	vm32_create_area(const char *name, void **address, uint32 addressSpec, size_t size, uint32 lock, uint32 protection)
+{
+	if (addressSpec != B_ANY_ADDRESS) {
+		return _kern_create_area(name, address, addressSpec, size, lock, protection);
+	}
+	// crazy random allocator :D
+	size = (size + (B_PAGE_SIZE - 1)) / B_PAGE_SIZE * B_PAGE_SIZE;
+	for (int i = 0; ; i++) {
+		void *address32 = (void*)(rand() % (0xffffffff - size + 1));
+		area_id area = _kern_create_area(name, &address32, B_EXACT_ADDRESS, size, lock, protection);
+		if (area >= B_OK || !(i < 100)) {
+			*address = address32;
+			return area;
+		}
+	}
+}
 
 void *GetImageBase(const char *name)
 {
@@ -218,7 +239,9 @@ void BuildArgs(ArrayDeleter<uint8> &mem, user_space_program_args &args, char **a
 
 int main(int argc, char **argv)
 {
-	ObjectDeleter<ElfImage> image(ElfImage::Load("../runtime_loader"));
+	srand(time(NULL));
+
+	ObjectDeleter<ElfImage> image(ElfImage::Load("../runtime_loader.riscv64"));
 
 	user_space_program_args args{};
 	ArrayDeleter<uint8> argsMem;
@@ -226,7 +249,14 @@ int main(int argc, char **argv)
 	BuildArgs(argsMem, args, argv + 1, env);
 
 	void *commpage = __gCommPageAddress;
+#if 0
+	AreaDeleter stackArea(create_area("guest commpage", &commpage, B_ANY_ADDRESS, COMMPAGE_SIZE, B_NO_LOCK, B_READ_AREA | B_WRITE_AREA));
+	((uint64*)commpage)[COMMPAGE_ENTRY_MAGIC] = COMMPAGE_SIGNATURE;
+	((uint64*)commpage)[COMMPAGE_ENTRY_VERSION] = COMMPAGE_VERSION;
+	((uint64*)commpage)[COMMPAGE_ENTRY_REAL_TIME_DATA] = 0;
+#endif
 
+#if 0
 	int signals[] = {SIGILL, SIGSEGV};
 	struct sigaction oldAction[B_COUNT_OF(signals)];
 	struct sigaction action {
@@ -236,12 +266,15 @@ int main(int argc, char **argv)
 	for (int i = 0; i < B_COUNT_OF(signals); i++) {
 		sigaction(signals[i], &action, &oldAction[i]);
 	}
+#endif
 
 	status_t res = HaikuThreadStart(NULL, (addr_t)image->GetEntry(), (addr_t)&args, (addr_t)commpage);
 
+#if 0
 	for (int i = 0; i < B_COUNT_OF(signals); i++) {
 		sigaction(signals[i], &oldAction[i], NULL);
 	}
+#endif
 
 	return res;
 }
