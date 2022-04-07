@@ -16,7 +16,18 @@ private:
 		uint16 segs[6];
 		uint8 fpsave[512];
 	};
-	Context fContext{};
+	
+	struct State {
+		State *self;
+		uint64 ip;
+		uint16 cs;
+		uint32 retIp;
+		uint16 retCs;
+		Context ctx;
+		jmp_buf retCtx;
+		void *longjmpAdr;
+	};
+
 	uint32 fIntVec{};
 	uint32 fIntArg{};
 	uint32 fRetProcAdr{};
@@ -24,6 +35,9 @@ private:
 
 	AreaDeleter fCodeArea;
 	void *fCodeBase{};
+
+	AreaDeleter fStateArea;
+	State *fState{};
 
 	jmp_buf fRetCtx{};
 

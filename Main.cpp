@@ -237,9 +237,16 @@ void BuildArgs(ArrayDeleter<uint8> &mem, user_space_program_args &args, char **a
 	args.env = (char**)&mem[0] + (argCnt + 1);
 }
 
+void VirtualCpuX86Test();
+
 int main(int argc, char **argv)
 {
 	srand(time(NULL));
+
+	if (argc <= 1) {
+		VirtualCpuX86Test();
+		return 0;
+	}
 
 	ObjectDeleter<ElfImage> image(ElfImage::Load("../runtime_loader.riscv64"));
 
@@ -256,7 +263,6 @@ int main(int argc, char **argv)
 	((uint64*)commpage)[COMMPAGE_ENTRY_REAL_TIME_DATA] = 0;
 #endif
 
-#if 0
 	int signals[] = {SIGILL, SIGSEGV};
 	struct sigaction oldAction[B_COUNT_OF(signals)];
 	struct sigaction action {
@@ -266,15 +272,12 @@ int main(int argc, char **argv)
 	for (int i = 0; i < B_COUNT_OF(signals); i++) {
 		sigaction(signals[i], &action, &oldAction[i]);
 	}
-#endif
 
 	status_t res = HaikuThreadStart(NULL, (addr_t)image->GetEntry(), (addr_t)&args, (addr_t)commpage);
 
-#if 0
 	for (int i = 0; i < B_COUNT_OF(signals); i++) {
 		sigaction(signals[i], &oldAction[i], NULL);
 	}
-#endif
 
 	return res;
 }

@@ -46,9 +46,9 @@ void ElfImageImpl<Class>::LoadSegments()
 	}
 	fSize = maxAdr - minAdr + 1;
 	if constexpr(std::is_same<Class, Elf32Class>()) {
-		fArea.SetTo(vm32_create_area("image", &fBase, B_ANY_ADDRESS, fSize, B_NO_LOCK, B_READ_AREA | B_WRITE_AREA));
+		fArea.SetTo(vm32_create_area("image", &fBase, B_ANY_ADDRESS, fSize, B_NO_LOCK, B_READ_AREA | B_WRITE_AREA | B_EXECUTE_AREA));
 	} else {
-		fArea.SetTo(create_area("image", &fBase, B_ANY_ADDRESS, fSize, B_NO_LOCK, B_READ_AREA | B_WRITE_AREA));
+		fArea.SetTo(create_area("image", &fBase, B_ANY_ADDRESS, fSize, B_NO_LOCK, B_READ_AREA | B_WRITE_AREA | B_EXECUTE_AREA));
 	}
 	fDelta = (Address)(addr_t)fBase - minAdr;
 	//printf("delta: %#" B_PRIx64 "\n", fDelta);
@@ -75,6 +75,7 @@ void ElfImageImpl<Class>::Relocate()
 	typename Class::Rel *relocAdr = NULL; Address relocSize = 0;
 	typename Class::Rela *relocAAdr = NULL; Address relocASize = 0;
 	Address pltRelocAdr = 0, pltRelocSize = 0;
+	Address pltRelocType;
 	if (fDynamic == NULL) return;
 	for (typename Class::Dyn *dyn = fDynamic; dyn->d_tag != DT_NULL; dyn++) {
 		switch (dyn->d_tag) {
@@ -82,6 +83,7 @@ void ElfImageImpl<Class>::Relocate()
 			case DT_RELSZ: relocSize = dyn->d_un.d_ptr; break;
 			case DT_RELA: relocAAdr = (typename Class::Rela*)FromVirt(dyn->d_un.d_ptr); break;
 			case DT_RELASZ: relocASize = dyn->d_un.d_ptr; break;
+			case DT_PLTREL: pltRelocType = dyn->d_un.d_ptr; break;
 			case DT_JMPREL: pltRelocAdr = dyn->d_un.d_ptr; break;
 			case DT_PLTRELSZ: pltRelocSize = dyn->d_un.d_ptr; break;
 			case DT_SYMTAB: fSymbols = (typename Class::Sym*)FromVirt(dyn->d_un.d_ptr);
@@ -89,7 +91,18 @@ void ElfImageImpl<Class>::Relocate()
 	}
 	if (relocAdr != NULL) DoRelocate<typename Class::Rel>(relocAdr, relocSize);
 	if (relocAAdr != NULL) DoRelocate<typename Class::Rela>(relocAAdr, relocASize);
-	if (pltRelocSize > 0) DoRelocate<typename Class::Rela>((typename Class::Rela*)FromVirt(pltRelocAdr), pltRelocSize);
+	if (pltRelocSize > 0) {
+		switch (pltRelocType) {
+			case DT_REL:
+				DoRelocate<typename Class::Rel>((typename Class::Rel*)FromVirt(pltRelocAdr), pltRelocSize);
+				break;
+			case DT_RELA:
+				DoRelocate<typename Class::Rela>((typename Class::Rela*)FromVirt(pltRelocAdr), pltRelocSize);
+				break;
+			default:
+				abort();
+		}
+	}
 }
 
 template<typename Class>
@@ -116,6 +129,10 @@ void ElfImageImpl<Class>::DoRelocate(Reloc *reloc, Address relocSize)
 			case EM_486:
 				switch (reloc->Type()) {
 					case R_386_NONE:
+						break;
+					case R_386_32:
+					case R_386_GLOB_DAT:
+						*dst = src;
 						break;
 					case R_386_RELATIVE:
 						*dst = (Address)(addr_t)FromVirt(src);

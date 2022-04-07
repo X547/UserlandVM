@@ -15,6 +15,7 @@ executable(
 	'VirtualCpuTemu.cpp',
 	'VirtualCpuX86Native.cpp',
 	'VirtualCpuX86NativeCode.S',
+	'VirtualCpuX86Test.cpp',
 	'Main.cpp',
 	include_directories: [
 		'/boot/system/develop/headers/private/shared',
