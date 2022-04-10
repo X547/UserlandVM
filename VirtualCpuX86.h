@@ -24,6 +24,7 @@ public:
 	virtual uint32 IntArg() = 0;
 
 	virtual uint32 RetProcAdr() = 0;
+	virtual uint32 RetProcArg() = 0;
 	virtual StopCause Cause() = 0;
 	virtual void Run() = 0;
 };

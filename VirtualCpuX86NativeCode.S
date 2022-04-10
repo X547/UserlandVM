@@ -17,14 +17,11 @@
 FUNCTION(VirtualCpuX86NativeCodeBegin):
 
 
-FUNCTION(VirtualCpuX86NativeLoadContext):
+FUNCTION(VirtualCpuX86NativeLoadContext): # %eax: state
 .code32
 	mov $USER_DATA_SELECTOR, %dx
 	mov %dx, %ds
 	mov %dx, %es
-
-	xor %edx, %edx
-	mov	%gs:(%edx), %eax
 
 	# TODO: other registers
 	mov		State_ctx + Context_regs + 4*3(%eax), %ebx
@@ -38,10 +35,10 @@ FUNCTION(VirtualCpuX86NativeLoadContext):
 	ret
 FUNCTION_END(VirtualCpuX86NativeLoadContext)
 
-FUNCTION(VirtualCpuX86NativeSaveContext):
+FUNCTION(VirtualCpuX86NativeSaveContext): # stack: state
 .code32
-	xor %edx, %edx
-	mov	%gs:(%edx), %eax
+	pop %edx # return address
+	pop %eax # state
 
 	# TODO: other registers
 	mov		%ebx, State_ctx + Context_regs + 4*3(%eax)
@@ -49,17 +46,14 @@ FUNCTION(VirtualCpuX86NativeSaveContext):
 	mov		%ebp, State_ctx + Context_regs + 4*5(%eax)
 	mov		%esi, State_ctx + Context_regs + 4*6(%eax)
 	mov		%edi, State_ctx + Context_regs + 4*7(%eax)
-	mov   0(%esp), %edx # return address
 	mov		%edx, State_ctx + Context_ip(%eax)
 
 	lea State_retIp(%eax), %edx
 	ljmp *(%edx)
 FUNCTION_END(VirtualCpuX86NativeSaveContext)
 
-FUNCTION(VirtualCpuX86NativeReturn):
+FUNCTION(VirtualCpuX86NativeReturn): # %rax: state
 .code64
-	mov	%gs:0, %rax
-
 	lea State_retCtx(%rax), %rdi
 	mov $1, %rsi
 	mov State_longjmpAdr(%rax), %rdx
@@ -71,7 +65,7 @@ FUNCTION(VirtualCpuX86NativeCodeEnd):
 
 
 FUNCTION(VirtualCpuX86NativeSwitch32):
-	mov	%gs:0, %rax
+	mov	%rdi, %rax
 	mov State_ctx + Context_regs + 4*4(%rax), %esp
 	lea State_ip(%rax), %rdx
 	rex64 ljmp *(%rdx)

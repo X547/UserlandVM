@@ -55,6 +55,7 @@ public:
 	uint32 IntArg() override;
 
 	uint32 RetProcAdr() override;
+	uint32 RetProcArg() override;
 	StopCause Cause() override;
 	void Run() override;
 };

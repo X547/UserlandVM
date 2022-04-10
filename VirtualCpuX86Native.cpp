@@ -19,7 +19,7 @@ area_id	vm32_create_area(const char *name, void **address, uint32 addressSpec, s
 extern char VirtualCpuX86NativeCodeBegin[];
 extern char VirtualCpuX86NativeCodeEnd[];
 
-extern "C" void VirtualCpuX86NativeSwitch32();
+extern "C" void VirtualCpuX86NativeSwitch32(void *state);
 extern "C" void VirtualCpuX86NativeLoadContext();
 extern "C" void VirtualCpuX86NativeSaveContext();
 extern "C" void VirtualCpuX86NativeReturn();
@@ -60,7 +60,8 @@ VirtualCpuX86Native::VirtualCpuX86Native()
 	fState->retCs = USER_CODE_SELECTOR;
 	fState->ctx = {};
 	fState->longjmpAdr = (void*)longjmp;
-	
+
+#if 0
 	printf("offsetof(State, ip): %#" B_PRIx32 "\n", offsetof(State, ip));
 	printf("offsetof(State, retIp): %#" B_PRIx32 "\n", offsetof(State, retIp));
 	printf("offsetof(State, ctx): %#" B_PRIx32 "\n", offsetof(State, ctx));
@@ -70,6 +71,7 @@ VirtualCpuX86Native::VirtualCpuX86Native()
 	printf("offsetof(Context, regs): %#" B_PRIx32 "\n", offsetof(Context, regs));
 
 	printf("USER_DATA_SELECTOR: %#" B_PRIx32 "\n", USER_DATA_SELECTOR);
+#endif
 }
 
 
@@ -83,17 +85,15 @@ uint32 VirtualCpuX86Native::IntVec() {return fIntVec;}
 uint32 VirtualCpuX86Native::IntArg() {return fIntArg;}
 
 uint32 VirtualCpuX86Native::RetProcAdr() {return fRetProcAdr;}
+uint32 VirtualCpuX86Native::RetProcArg() {return (uint32)(addr_t)fState;}
 VirtualCpuX86Native::StopCause VirtualCpuX86Native::Cause() {return fCause;}
 
 void VirtualCpuX86Native::Run()
 {
-	printf("Run()\n");
-	printf("  ip: %#" B_PRIx32 "\n", fState->ctx.ip);
-	printf("  sp: %#" B_PRIx32 "\n", fState->ctx.regs[4]);
-	SetGsBase((uint64)(addr_t)fState);
-	printf("  GetCurState(): %p\n", GetCurState());
+	//SetGsBase((uint64)(addr_t)fState);
+	//printf("  GetCurState(): %p\n", GetCurState());
 	if (setjmp(fState->retCtx) == 0) {
-		VirtualCpuX86NativeSwitch32();
+		VirtualCpuX86NativeSwitch32(fState);
 	}
 	fCause = StopCause::retProc;
 }
