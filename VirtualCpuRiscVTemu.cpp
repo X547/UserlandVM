@@ -1,4 +1,4 @@
-#include "VirtualCpuTemu.h"
+#include "VirtualCpuRiscVTemu.h"
 
 extern "C" {
 #include "temu/riscv_cpu.h"
@@ -11,7 +11,7 @@ extern "C" {
 pthread_mutex_t sCpuMutex = PTHREAD_MUTEX_INITIALIZER;
 
 
-VirtualCpuTemu::VirtualCpuTemu()
+VirtualCpuRiscVTemu::VirtualCpuRiscVTemu()
 {
 	fMemMap = phys_mem_map_init();
 	fRam = register_ram_entry(fMemMap, 0x1000, (uint64_t)(-0x1000), 0);
@@ -20,20 +20,20 @@ VirtualCpuTemu::VirtualCpuTemu()
 	fCpu->fs = 1;
 }
 
-VirtualCpuTemu::~VirtualCpuTemu()
+VirtualCpuRiscVTemu::~VirtualCpuRiscVTemu()
 {
 	riscv_cpu_end(fCpu); fCpu = NULL;
 	fRam->phys_mem = NULL;
 	phys_mem_map_end(fMemMap); fMemMap = NULL;
 }
 
-uint64 &VirtualCpuTemu::Pc() {return fCpu->pc;}
-uint64 *VirtualCpuTemu::Regs() {return fCpu->reg;}
-double *VirtualCpuTemu::FRegs() {return (double*)fCpu->fp_reg;}
-int VirtualCpuTemu::Cause() {return fCpu->pending_exception;}
-uint64 VirtualCpuTemu::Tval() {return fCpu->pending_tval;}
+uint64 &VirtualCpuRiscVTemu::Pc() {return fCpu->pc;}
+uint64 *VirtualCpuRiscVTemu::Regs() {return fCpu->reg;}
+double *VirtualCpuRiscVTemu::FRegs() {return (double*)fCpu->fp_reg;}
+int VirtualCpuRiscVTemu::Cause() {return fCpu->pending_exception;}
+uint64 VirtualCpuRiscVTemu::Tval() {return fCpu->pending_tval;}
 
-void VirtualCpuTemu::Run()
+void VirtualCpuRiscVTemu::Run()
 {
 	// TinyEMU is not thread-safe for now (do not implement atomic instructions) so use mutex
 	pthread_mutex_lock(&sCpuMutex);

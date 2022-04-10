@@ -1,21 +1,21 @@
 #pragma once
 
-#include "VirtualCpu.h"
+#include "VirtualCpuRiscV.h"
 
 struct PhysMemoryMap;
 struct PhysMemoryRange;
 struct RISCVCPUState;
 
 
-class VirtualCpuTemu: public VirtualCpu {
+class VirtualCpuRiscVTemu: public VirtualCpuRiscV {
 private:
 	PhysMemoryMap *fMemMap;
 	PhysMemoryRange *fRam;
 	RISCVCPUState *fCpu;
 
 public:
-	VirtualCpuTemu();
-	virtual ~VirtualCpuTemu();
+	VirtualCpuRiscVTemu();
+	virtual ~VirtualCpuRiscVTemu();
 	uint64 &Pc() final;
 	uint64 *Regs() final;
 	double *FRegs() final;

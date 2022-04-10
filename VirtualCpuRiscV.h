@@ -3,9 +3,9 @@
 #include <SupportDefs.h>
 
 
-class VirtualCpu {
+class VirtualCpuRiscV {
 public:
-	virtual ~VirtualCpu() {}
+	virtual ~VirtualCpuRiscV() {}
 	virtual uint64 &Pc() = 0;
 	virtual uint64 *Regs() = 0;
 	virtual double *FRegs() = 0;

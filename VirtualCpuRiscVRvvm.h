@@ -1,6 +1,6 @@
 #pragma once
 
-#include "VirtualCpu.h"
+#include "VirtualCpuRiscV.h"
 
 extern "C" {
 #include "rvvm/rvvm.h"
@@ -12,7 +12,7 @@ extern "C" {
 
 extern "C" void riscv_trap(rvvm_hart_t* vm, bitcnt_t cause, maxlen_t tval);
 
-class VirtualCpuRvvm: public VirtualCpu {
+class VirtualCpuRiscVRvvm: public VirtualCpuRiscV {
 private:
 	friend void riscv_trap(rvvm_hart_t* vm, bitcnt_t cause, maxlen_t tval);
 
@@ -22,8 +22,8 @@ private:
 	uint64 fTval{};
 
 public:
-	VirtualCpuRvvm();
-	virtual ~VirtualCpuRvvm();
+	VirtualCpuRiscVRvvm();
+	virtual ~VirtualCpuRiscVRvvm();
 	uint64 &Pc() final;
 	uint64 *Regs() final;
 	double *FRegs() final;

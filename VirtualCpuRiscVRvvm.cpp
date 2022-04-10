@@ -1,17 +1,17 @@
-#include "VirtualCpuRvvm.h"
+#include "VirtualCpuRiscVRvvm.h"
 
 
 extern "C" void riscv_trap(rvvm_hart_t* vm, bitcnt_t cause, maxlen_t tval)
 {
 	//printf("Hart %p trap at %#08" PRIxXLEN ", cause %x, tval %#08" PRIxXLEN "\n", vm, vm->registers[REGISTER_PC], cause, tval);
-	VirtualCpuRvvm *cpu = (VirtualCpuRvvm*)((uint8*)vm - offsetof(VirtualCpuRvvm, fVm));
+	VirtualCpuRiscVRvvm *cpu = (VirtualCpuRiscVRvvm*)((uint8*)vm - offsetof(VirtualCpuRiscVRvvm, fVm));
 	cpu->fCause = cause;
 	cpu->fTval = tval;
 	atomic_or_uint32(&vm->pending_events, EXT_EVENT_PAUSE);
 	riscv_restart_dispatch(vm);
 }
 
-VirtualCpuRvvm::VirtualCpuRvvm()
+VirtualCpuRiscVRvvm::VirtualCpuRiscVRvvm()
 {
 	riscv_hart_init(&fVm, true);
 	fVm.machine = &fMachine;
@@ -24,17 +24,17 @@ VirtualCpuRvvm::VirtualCpuRvvm()
 	riscv_csr_op(&fVm, 0x300, &mstatus, CSR_SWAP);
 }
 
-VirtualCpuRvvm::~VirtualCpuRvvm()
+VirtualCpuRiscVRvvm::~VirtualCpuRiscVRvvm()
 {
 }
 
-uint64 &VirtualCpuRvvm::Pc() {return fVm.registers[REGISTER_PC];}
-uint64 *VirtualCpuRvvm::Regs() {return &fVm.registers[REGISTER_X0];}
-double *VirtualCpuRvvm::FRegs() {return &fVm.fpu_registers[0];}
-int VirtualCpuRvvm::Cause() {return fCause;}
-uint64 VirtualCpuRvvm::Tval() {return fTval;}
+uint64 &VirtualCpuRiscVRvvm::Pc() {return fVm.registers[REGISTER_PC];}
+uint64 *VirtualCpuRiscVRvvm::Regs() {return &fVm.registers[REGISTER_X0];}
+double *VirtualCpuRiscVRvvm::FRegs() {return &fVm.fpu_registers[0];}
+int VirtualCpuRiscVRvvm::Cause() {return fCause;}
+uint64 VirtualCpuRiscVRvvm::Tval() {return fTval;}
 
-void VirtualCpuRvvm::Run()
+void VirtualCpuRiscVRvvm::Run()
 {
 	fCause = -1;
 	riscv_hart_run(&fVm);

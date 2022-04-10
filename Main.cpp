@@ -23,21 +23,21 @@
 
 #include "Loader.h"
 #include "Syscalls.h"
-#include "VirtualCpu.h"
-#include "VirtualCpuTemu.h"
-#include "VirtualCpuRvvm.h"
+#include "VirtualCpuRiscV.h"
+#include "VirtualCpuRiscVTemu.h"
+#include "VirtualCpuRiscVRvvm.h"
 
 
 extern void *__gCommPageAddress;
 
-thread_local VirtualCpu *tCpu = NULL;
+thread_local VirtualCpuRiscV *tCpu = NULL;
 thread_local bool tThreadExit = false;
 thread_local status_t tThreadReturnValue = B_OK;
 
 bool gInSignalHandler = false;
 
 
-typedef VirtualCpuTemu VirtualCpuDefault;
+typedef VirtualCpuRiscVRvvm VirtualCpuRiscVDefault;
 
 
 area_id	vm32_create_area(const char *name, void **address, uint32 addressSpec, size_t size, uint32 lock, uint32 protection)
@@ -144,7 +144,7 @@ status_t HaikuThreadStart(pthread_t pthread, uint64 entry, uint64 arg1, uint64 a
 		0x00000073, // ecall
 	};
 
-	VirtualCpuDefault cpu;
+	VirtualCpuRiscVDefault cpu;
 	tCpu = &cpu;
 	cpu.Regs()[1] = (addr_t)&threadExitCode;
 	cpu.Regs()[2] = (addr_t)stack + stackSize;
