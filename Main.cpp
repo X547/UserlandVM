@@ -18,6 +18,7 @@
 #include <private/system/thread_defs.h>
 #include <private/system/user_thread_defs.h>
 #include <private/libroot/pthread_private.h>
+#include <private/libroot/libroot_private.h>
 #include <private/system/commpage_defs.h>
 #include <private/system/arch/riscv64/arch_commpage_defs.h>
 
@@ -26,6 +27,8 @@
 #include "VirtualCpuRiscV.h"
 #include "VirtualCpuRiscVTemu.h"
 #include "VirtualCpuRiscVRvvm.h"
+
+#define CheckRet(err) {status_t _err = (err); if (_err < B_OK) return _err;}
 
 
 extern void *__gCommPageAddress;
@@ -167,6 +170,9 @@ int32 ThreadEntry(void *arg)
 	return HaikuThreadStart((pthread_t)attributes->args2, (addr_t)attributes->entry, (addr_t)attributes->args1, (addr_t)attributes->args2);
 }
 
+
+// #pragma mark - syscall overrides
+
 thread_id vm_spawn_thread(struct thread_creation_attributes* attributes)
 {
 	ObjectDeleter<struct thread_creation_attributes> guestAttrs(new struct thread_creation_attributes());
@@ -181,9 +187,64 @@ void vm_exit_thread(status_t returnValue)
 	tThreadReturnValue = returnValue;
 }
 
+thread_id vm_fork()
+{
+	VirtualCpuRiscV *cpu = tCpu;
+	thread_id res = fork();
+	if (res == 0) tCpu = cpu;
+	return res;
+}
+
+static const char sAppPath[] = "/boot/system/runtime/UserlandVM";
+
+thread_id vm_load_image(const char* const* flatArgs, size_t flatArgsSize, int32 argCount, int32 envCount, int32 priority, uint32 flags, port_id errorPort, uint32 errorToken)
+{
+	printf("[!] vm_load_image\n");
+	char** outFlatArgs;
+	size_t outFlatSize;
+	int32 outEnvCount = envCount;
+	{
+		ArrayDeleter<const char*> args2(new(std::nothrow) const char*[argCount + 2]);
+		if (!args2.IsSet()) return B_NO_MEMORY;
+		args2[0] = sAppPath;
+		memcpy(&args2[1], flatArgs, sizeof(void*)*(argCount + 1));
+		CheckRet(__flatten_process_args(args2.Get(), argCount + 1, flatArgs + argCount + 1, &outEnvCount, NULL, &outFlatArgs, &outFlatSize));
+	}
+	status_t res = _kern_load_image(outFlatArgs, outFlatSize, argCount + 1, outEnvCount, priority, flags, errorPort, errorToken);
+	free(outFlatArgs);
+	return res;
+}
+
+thread_id vm_exec(const char *path, const char* const* flatArgs, size_t flatArgsSize, int32 argCount, int32 envCount, mode_t umask)
+{
+	char** outFlatArgs;
+	size_t outFlatSize;
+	int32 outEnvCount = envCount;
+	{
+		ArrayDeleter<const char*> args2(new(std::nothrow) const char*[argCount + 2]);
+		if (!args2.IsSet()) return B_NO_MEMORY;
+		args2[0] = sAppPath;
+		memcpy(&args2[1], flatArgs, sizeof(void*)*(argCount + 1));
+		CheckRet(__flatten_process_args(args2.Get(), argCount + 1, flatArgs + argCount + 1, &outEnvCount, NULL, &outFlatArgs, &outFlatSize));
+	}
+	status_t res = _kern_exec(sAppPath, outFlatArgs, outFlatSize, argCount + 1, outEnvCount, umask);
+	free(outFlatArgs);
+	return res;
+}
+
+status_t vm_sigaction(int sig, const struct sigaction *action, struct sigaction *oldAction)
+{
+	//printf("[!] vm_sigaction: unimplemented\n");
+	return B_OK;
+}
+
+
+// #pragma mark -
+
 void SignalHandler(int sig, siginfo_t *info, ucontext_t *ctx, void *arg)
 {
 	printf("SignalHandler(%d)\n", sig);
+	printf("PC: %#" B_PRIx64 "\n", tCpu->Pc());
 	if (gInSignalHandler) {
 		exit(0);
 	}
@@ -239,7 +300,7 @@ void BuildArgs(ArrayDeleter<uint8> &mem, user_space_program_args &args, char **a
 
 void VirtualCpuX86Test();
 
-int main(int argc, char **argv)
+int main(int argc, char **argv, char **env)
 {
 	srand(time(NULL));
 
@@ -248,11 +309,11 @@ int main(int argc, char **argv)
 		return 0;
 	}
 
-	ObjectDeleter<ElfImage> image(ElfImage::Load("../runtime_loader.riscv64"));
+	ObjectDeleter<ElfImage> image(ElfImage::Load("/boot/system/runtime_loader"));
 
 	user_space_program_args args{};
 	ArrayDeleter<uint8> argsMem;
-	char *env[] = {"A=1", NULL};
+	//char *env[] = {"A=1", NULL};
 	BuildArgs(argsMem, args, argv + 1, env);
 
 	void *commpage = __gCommPageAddress;
@@ -263,19 +324,19 @@ int main(int argc, char **argv)
 	((uint64*)commpage)[COMMPAGE_ENTRY_REAL_TIME_DATA] = 0;
 #endif
 
-	int signals[] = {SIGILL, SIGSEGV};
+	int signals[] = {/*SIGILL, SIGSEGV,*/ 0};
 	struct sigaction oldAction[B_COUNT_OF(signals)];
 	struct sigaction action {
 		.sa_sigaction = (__siginfo_handler_t)SignalHandler,
 		.sa_flags = SA_SIGINFO
 	};
-	for (int i = 0; i < B_COUNT_OF(signals); i++) {
+	for (int i = 0; i < signals[i] != 0; i++) {
 		sigaction(signals[i], &action, &oldAction[i]);
 	}
 
 	status_t res = HaikuThreadStart(NULL, (addr_t)image->GetEntry(), (addr_t)&args, (addr_t)commpage);
 
-	for (int i = 0; i < B_COUNT_OF(signals); i++) {
+	for (int i = 0; i < signals[i] != 0; i++) {
 		sigaction(signals[i], &oldAction[i], NULL);
 	}
 

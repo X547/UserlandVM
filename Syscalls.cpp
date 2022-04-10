@@ -4,6 +4,11 @@
 
 thread_id vm_spawn_thread(struct thread_creation_attributes* attributes);
 void vm_exit_thread(status_t returnValue);
+thread_id vm_fork();
+thread_id vm_load_image(const char* const* flatArgs, size_t flatArgsSize, int32 argCount, int32 envCount, int32 priority, uint32 flags, port_id errorPort, uint32 errorToken);
+status_t vm_exec(const char *path, const char* const* flatArgs, size_t flatArgsSize, int32 argCount, int32 envCount, mode_t umask);
+
+status_t vm_sigaction(int sig, const struct sigaction *action, struct sigaction *oldAction);
 
 
 void DispatchSyscall(uint32 op, uint64 *args, uint64 *_returnValue)
@@ -121,7 +126,7 @@ void DispatchSyscall(uint32 op, uint64 *args, uint64 *_returnValue)
 			*_returnValue = _kern_xsi_msgsnd((int)*(long*)args, *(const void **)((char*)args + 8), *(size_t*)((char*)args + 16), (int)*(long*)((char*)args + 24));
 			break;
 		case 37:
-			*_returnValue = _kern_load_image(*(const char * const **)args, *(size_t*)((char*)args + 8), (int32)*(long*)((char*)args + 16), (int32)*(long*)((char*)args + 24), (int32)*(long*)((char*)args + 32), (uint32)*(long*)((char*)args + 40), (port_id)*(long*)((char*)args + 48), (uint32)*(long*)((char*)args + 56));
+			*_returnValue = vm_load_image(*(const char * const **)args, *(size_t*)((char*)args + 8), (int32)*(long*)((char*)args + 16), (int32)*(long*)((char*)args + 24), (int32)*(long*)((char*)args + 32), (uint32)*(long*)((char*)args + 40), (port_id)*(long*)((char*)args + 48), (uint32)*(long*)((char*)args + 56));
 			break;
 		case 38:
 			 _kern_exit_team((status_t)*(long*)args);
@@ -139,10 +144,10 @@ void DispatchSyscall(uint32 op, uint64 *args, uint64 *_returnValue)
 			*_returnValue = _kern_wait_for_child((thread_id)*(long*)args, (uint32)*(long*)((char*)args + 8), *(siginfo_t **)((char*)args + 16), *(team_usage_info **)((char*)args + 24));
 			break;
 		case 43:
-			*_returnValue = _kern_exec(*(const char **)args, *(const char * const **)((char*)args + 8), *(size_t*)((char*)args + 16), (int32)*(long*)((char*)args + 24), (int32)*(long*)((char*)args + 32), (mode_t)*(long*)((char*)args + 40));
+			*_returnValue = vm_exec(*(const char **)args, *(const char * const **)((char*)args + 8), *(size_t*)((char*)args + 16), (int32)*(long*)((char*)args + 24), (int32)*(long*)((char*)args + 32), (mode_t)*(long*)((char*)args + 40));
 			break;
 		case 44:
-			*_returnValue = _kern_fork();
+			*_returnValue = vm_fork();
 			break;
 		case 45:
 			*_returnValue = _kern_process_info((pid_t)*(long*)args, (int32)*(long*)((char*)args + 8));
@@ -268,7 +273,7 @@ void DispatchSyscall(uint32 op, uint64 *args, uint64 *_returnValue)
 			*_returnValue = _kern_set_signal_mask((int)*(long*)args, *(const sigset_t **)((char*)args + 8), *(sigset_t **)((char*)args + 16));
 			break;
 		case 86:
-			*_returnValue = _kern_sigaction((int)*(long*)args, *(const struct sigaction **)((char*)args + 8), *(struct sigaction **)((char*)args + 16));
+			*_returnValue = vm_sigaction((int)*(long*)args, *(const struct sigaction **)((char*)args + 8), *(struct sigaction **)((char*)args + 16));
 			break;
 		case 87:
 			*_returnValue = _kern_sigwait(*(const sigset_t **)args, *(siginfo_t **)((char*)args + 8), (uint32)*(long*)((char*)args + 16), *(bigtime_t*)((char*)args + 24));
