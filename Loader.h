@@ -42,7 +42,9 @@ public:
 	virtual ~ElfImage() {}
 	static ElfImage *Load(const char *path);
 	virtual const char *GetArchString() = 0;
+	virtual void *GetImageBase() = 0;
 	virtual void *GetEntry() = 0;
+	virtual bool FindSymbol(const char *name, void **adr, size_t *size) = 0;
 };
 
 template <typename Class>
@@ -55,13 +57,15 @@ private:
 	ArrayDeleter<typename Class::Phdr> fPhdrs;
 
 	AreaDeleter fArea;
-	void *fBase = 0;
-	Address fSize = 0;
-	PtrDiff fDelta = 0;
+	void *fBase{};
+	Address fSize{};
+	PtrDiff fDelta{};
 
-	void *fEntry = 0;
-	typename Class::Dyn *fDynamic = 0;
-	typename Class::Sym *fSymbols = 0;
+	void *fEntry{};
+	typename Class::Dyn *fDynamic{};
+	typename Class::Sym *fSymbols{};
+	uint32 *fHash{};
+	const char *fStrings{};
 
 	void *FromVirt(Address virtAdr) {return (void*)(virtAdr + fDelta);}
 	Address ToVirt(void *adr) {return ((Address)(addr_t)adr - fDelta);}
@@ -80,5 +84,7 @@ protected:
 public:
 	virtual ~ElfImageImpl() {}
 	const char *GetArchString() override;
+	void *GetImageBase() override;
 	void *GetEntry() override {return fEntry;}
+	bool FindSymbol(const char *name, void **adr, size_t *size) override;
 };

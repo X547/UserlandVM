@@ -1,10 +1,16 @@
 #include "Loader.h"
+
 #include <stdio.h>
 #include <string.h>
+
 #include <algorithm>
 #include <type_traits>
+
 #include <OS.h>
+#include <private/system/arch/arm/arch_elf.h>
 #include <private/system/arch/riscv64/arch_elf.h>
+#include <private/system/arch/x86/arch_elf.h>
+#include <private/system/arch/x86_64/arch_elf.h>
 #include <private/system/syscalls.h>
 
 
@@ -74,7 +80,7 @@ void ElfImageImpl<Class>::Relocate()
 {
 	typename Class::Rel *relocAdr = NULL; Address relocSize = 0;
 	typename Class::Rela *relocAAdr = NULL; Address relocASize = 0;
-	Address pltRelocAdr = 0, pltRelocSize = 0;
+	void *pltRelocAdr = NULL; Address pltRelocSize = 0;
 	Address pltRelocType;
 	if (fDynamic == NULL) return;
 	for (typename Class::Dyn *dyn = fDynamic; dyn->d_tag != DT_NULL; dyn++) {
@@ -84,20 +90,22 @@ void ElfImageImpl<Class>::Relocate()
 			case DT_RELA: relocAAdr = (typename Class::Rela*)FromVirt(dyn->d_un.d_ptr); break;
 			case DT_RELASZ: relocASize = dyn->d_un.d_ptr; break;
 			case DT_PLTREL: pltRelocType = dyn->d_un.d_ptr; break;
-			case DT_JMPREL: pltRelocAdr = dyn->d_un.d_ptr; break;
+			case DT_JMPREL: pltRelocAdr = FromVirt(dyn->d_un.d_ptr); break;
 			case DT_PLTRELSZ: pltRelocSize = dyn->d_un.d_ptr; break;
-			case DT_SYMTAB: fSymbols = (typename Class::Sym*)FromVirt(dyn->d_un.d_ptr);
+			case DT_SYMTAB: fSymbols = (typename Class::Sym*)FromVirt(dyn->d_un.d_ptr); break;
+			case DT_STRTAB: fStrings = (const char*)FromVirt(dyn->d_un.d_ptr); break;
+			case DT_HASH: fHash = (uint32*)FromVirt(dyn->d_un.d_ptr); break;
 		}
 	}
 	if (relocAdr != NULL) DoRelocate<typename Class::Rel>(relocAdr, relocSize);
 	if (relocAAdr != NULL) DoRelocate<typename Class::Rela>(relocAAdr, relocASize);
-	if (pltRelocSize > 0) {
+	if (pltRelocAdr != NULL) {
 		switch (pltRelocType) {
 			case DT_REL:
-				DoRelocate<typename Class::Rel>((typename Class::Rel*)FromVirt(pltRelocAdr), pltRelocSize);
+				DoRelocate<typename Class::Rel>((typename Class::Rel*)pltRelocAdr, pltRelocSize);
 				break;
 			case DT_RELA:
-				DoRelocate<typename Class::Rela>((typename Class::Rela*)FromVirt(pltRelocAdr), pltRelocSize);
+				DoRelocate<typename Class::Rela>((typename Class::Rela*)pltRelocAdr, pltRelocSize);
 				break;
 			default:
 				abort();
@@ -112,16 +120,16 @@ void ElfImageImpl<Class>::DoRelocate(Reloc *reloc, Address relocSize)
 	Address count = relocSize/sizeof(Reloc);
 	for (; count > 0; reloc++, count--) {
 		Address *dst = (Address*)FromVirt(reloc->r_offset);
-		Address src;
+		Address old = 0, sym = 0;
 		if constexpr (std::is_same<Reloc, typename Class::Rel>()) {
-			src = *dst;
+			old = *dst;
 		} else if constexpr (std::is_same<Reloc, typename Class::Rela>()) {
-			src = reloc->r_addend;
+			old = reloc->r_addend;
 		} else {
 			abort();
 		}
 		if (reloc->SymbolIndex() != 0) {
-			src += (Address)(addr_t)FromVirt(fSymbols[reloc->SymbolIndex()].st_value);
+			sym = (Address)(addr_t)FromVirt(fSymbols[reloc->SymbolIndex()].st_value);
 		}
 
 		switch (fHeader.e_machine) {
@@ -131,11 +139,14 @@ void ElfImageImpl<Class>::DoRelocate(Reloc *reloc, Address relocSize)
 					case R_386_NONE:
 						break;
 					case R_386_32:
+						*dst = old + sym;
+						break;
 					case R_386_GLOB_DAT:
-						*dst = src;
+					case R_386_JMP_SLOT:
+						*dst = sym;
 						break;
 					case R_386_RELATIVE:
-						*dst = (Address)(addr_t)FromVirt(src);
+						*dst = (Address)(addr_t)FromVirt(old + sym);
 						break;
 					default:
 						abort();
@@ -148,24 +159,56 @@ void ElfImageImpl<Class>::DoRelocate(Reloc *reloc, Address relocSize)
 				abort();
 				break;
 			case EM_ARM:
-				abort();
+				switch (reloc->Type()) {
+					case R_ARM_NONE:
+						continue;
+					case R_ARM_RELATIVE:
+						*dst = (Address)(addr_t)FromVirt(old + sym);
+						break;
+					case R_ARM_JMP_SLOT:
+					case R_ARM_GLOB_DAT:
+						*dst = sym;
+						break;
+					case R_ARM_ABS32:
+						*dst = old + sym;
+						break;
+					default:
+						abort();
+				}
 				break;
 			case EM_ARM64:
 				abort();
 				break;
 			case EM_X86_64:
-				abort();
+				switch (reloc->Type()) {
+					case R_X86_64_NONE:
+						break;
+					case R_X86_64_64:
+						*dst = old + sym;
+						break;
+					case R_X86_64_JUMP_SLOT:
+					case R_X86_64_GLOB_DAT:
+						*dst = sym;
+						break;
+					case R_X86_64_RELATIVE:
+						*dst = (Address)(addr_t)FromVirt(old + sym);
+						break;
+					default:
+						abort();
+				}
 				break;
 			case EM_RISCV:
 				switch (reloc->Type()) {
 					case R_RISCV_NONE:
 						break;
 					case R_RISCV_64:
+						*dst = old + sym;
+						break;
 					case R_RISCV_JUMP_SLOT:
-						*dst = src;
+						*dst = sym;
 						break;
 					case R_RISCV_RELATIVE:
-						*dst = (Address)(addr_t)FromVirt(src);
+						*dst = (Address)(addr_t)FromVirt(old + sym);
 						break;
 					default:
 						abort();
@@ -183,14 +226,24 @@ void ElfImageImpl<Class>::Register()
 	extended_image_info info {
 		.basic_info = {
 			.type = B_LIBRARY_IMAGE,
-			//.name = "runtime_loader",
 			.text = fBase,
 			.text_size = fSize,
 		},
 		.text_delta = fDelta,
 		.symbol_table = fSymbols
 	};
-	strcpy(info.basic_info.name, "runtime_loader");
+
+	struct stat stat;
+	if (_kern_read_stat(fileno(fFile.Get()), NULL, false, &stat, sizeof(struct stat)) == B_OK) {
+		info.basic_info.device = stat.st_dev;
+		info.basic_info.node = stat.st_ino;
+	} else {
+		info.basic_info.device = -1;
+		info.basic_info.node = -1;
+	}
+
+	strcpy(info.basic_info.name, fPath.Get());
+
 	_kern_register_image(&info, sizeof(info));
 }
 
@@ -209,15 +262,44 @@ const char *ElfImageImpl<Class>::GetArchString()
 	switch (fHeader.e_machine) {
 		case EM_386:
 		case EM_486: return "x86";
-		case EM_68K: return "m68k";
-		case EM_PPC: return "ppc";
+		case EM_68K: return "m68k"; // big endian
+		case EM_PPC: return "ppc"; // big endian
 		case EM_ARM: return "arm";
 		case EM_ARM64: return "arm64";
 		case EM_X86_64: return "x86_64";
-		case EM_RISCV: return "riscv";
+		case EM_SPARCV9: return "sparc"; // big endian, 64 bit
+		case EM_RISCV:
+			if constexpr (std::is_same<Class, Elf32Class>()) return "riscv32";
+			else if constexpr (std::is_same<Class, Elf64Class>()) return "riscv64";
+			else abort();
+			break;
 	}
 	return NULL;
 }
+
+template<typename Class>
+void *ElfImageImpl<Class>::GetImageBase()
+{
+	return fBase;
+}
+
+template<typename Class>
+bool ElfImageImpl<Class>::FindSymbol(const char *name, void **adr, size_t *size)
+{
+	if (fSymbols == NULL || fHash == NULL) return false;
+	uint32 symCnt = fHash[1];
+	for (uint32 i = 0; i < symCnt; i++) {
+		typename Class::Sym &sym = fSymbols[i];
+		if (sym.st_shndx == SHN_UNDEF) continue;
+		const char *symName = fStrings + sym.st_name;
+		if (strcmp(name, symName) != 0) continue;
+		if (adr != NULL) *adr = FromVirt(sym.st_value);
+		if (size != NULL) *size = sym.st_size;
+		return true;
+	}
+	return false;
+}
+
 
 template class ElfImageImpl<Elf32Class>;
 template class ElfImageImpl<Elf64Class>;
