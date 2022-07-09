@@ -1,0 +1,6 @@
+#!sh
+
+set -e
+
+gcc -c -m32 TestX86.c
+mold -shared TestX86.o -o ../../TestX86
