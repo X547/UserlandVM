@@ -227,7 +227,7 @@ void ElfImageImpl<Class>::Register()
 		.basic_info = {
 			.type = B_LIBRARY_IMAGE,
 			.text = fBase,
-			.text_size = fSize,
+			.text_size = (int32)fSize,
 		},
 		.text_delta = fDelta,
 		.symbol_table = fSymbols

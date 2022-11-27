@@ -1,5 +1,7 @@
 #include "VirtualCpuRiscVRvvm.h"
 
+#include <new>
+
 
 extern "C" void riscv_trap(rvvm_hart_t* vm, bitcnt_t cause, maxlen_t tval)
 {
@@ -38,4 +40,10 @@ void VirtualCpuRiscVRvvm::Run()
 {
 	fCause = -1;
 	riscv_hart_run(&fVm);
+}
+
+
+VirtualCpuRiscV *instantiate_virtual_cpu_riscv()
+{
+	return new(std::nothrow) VirtualCpuRiscVRvvm();
 }

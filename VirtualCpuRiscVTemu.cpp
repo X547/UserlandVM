@@ -7,6 +7,7 @@ extern "C" {
 }
 
 #include <pthread.h>
+#include <new>
 
 pthread_mutex_t sCpuMutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -50,4 +51,10 @@ void VirtualCpuRiscVTemu::Run()
 			;
 	}
 	pthread_mutex_unlock(&sCpuMutex);
+}
+
+
+VirtualCpuRiscV *instantiate_virtual_cpu_riscv()
+{
+	return new(std::nothrow) VirtualCpuRiscVTemu();
 }

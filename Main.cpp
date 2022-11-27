@@ -8,6 +8,7 @@
 #include <libgen.h>
 #include <time.h>
 #include <algorithm>
+#include <dlfcn.h>
 
 #include <signal.h>
 #include <OS.h>
@@ -25,11 +26,11 @@
 #include "Loader.h"
 #include "Syscalls.h"
 #include "VirtualCpuRiscV.h"
-#include "VirtualCpuRiscVTemu.h"
-#include "VirtualCpuRiscVRvvm.h"
 
 #define CheckRet(err) {status_t _err = (err); if (_err < B_OK) return _err;}
 
+
+static VirtualCpuRiscV *(*sInstantiateVirtualCpuRiscv)();
 
 extern void *__gCommPageAddress;
 
@@ -38,9 +39,6 @@ thread_local bool tThreadExit = false;
 thread_local status_t tThreadReturnValue = B_OK;
 
 bool gInSignalHandler = false;
-
-
-typedef VirtualCpuRiscVRvvm VirtualCpuRiscVDefault;
 
 
 area_id	vm32_create_area(const char *name, void **address, uint32 addressSpec, size_t size, uint32 lock, uint32 protection)
@@ -103,7 +101,10 @@ static void HaikuTrap()
 	switch (tCpu->Cause()) {
 		case -1:
 			break;
-		case TRAP_ENVCALL_MMODE: {
+		case causeMEcall:
+		case causeSEcall:
+		case causeUEcall:
+		{
 			uint64 syscall = tCpu->Regs()[5];
 			//printf("syscall %" B_PRIu64 "(%s)\n", syscall, syscall < (uint64)kSyscallCount ? kExtendedSyscallInfos[syscall].name : "?");
 
@@ -120,7 +121,7 @@ static void HaikuTrap()
 			break;
 		}
 		default:
-			printf("[!] unhandled trap: Hart %p trap at %#08" PRIxXLEN ", cause %x, tval %#08" PRIxXLEN "\n", tCpu, tCpu->Pc(), tCpu->Cause(), tCpu->Tval());
+			printf("[!] unhandled trap: Hart %p trap at %#08" B_PRIx64 ", cause %x, tval %#08" B_PRIx64 "\n", tCpu, tCpu->Pc(), tCpu->Cause(), tCpu->Tval());
 			StackTrace();
 			fgetc(stdin);
 			_exit(1);
@@ -147,16 +148,16 @@ status_t HaikuThreadStart(pthread_t pthread, uint64 entry, uint64 arg1, uint64 a
 		0x00000073, // ecall
 	};
 
-	VirtualCpuRiscVDefault cpu;
-	tCpu = &cpu;
-	cpu.Regs()[1] = (addr_t)&threadExitCode;
-	cpu.Regs()[2] = (addr_t)stack + stackSize;
-	cpu.Regs()[4] = (addr_t)&tls;
-	cpu.Regs()[10] = arg1;
-	cpu.Regs()[11] = arg2;
-	cpu.Pc() = entry;
+	ObjectDeleter<VirtualCpuRiscV> cpu(sInstantiateVirtualCpuRiscv());
+	tCpu = cpu.Get();
+	cpu->Regs()[1] = (addr_t)&threadExitCode;
+	cpu->Regs()[2] = (addr_t)stack + stackSize;
+	cpu->Regs()[4] = (addr_t)&tls;
+	cpu->Regs()[10] = arg1;
+	cpu->Regs()[11] = arg2;
+	cpu->Pc() = entry;
 	while (!tThreadExit) {
-		cpu.Run();
+		cpu->Run();
 		HaikuTrap();
 	}
 	tCpu = NULL;
@@ -195,7 +196,7 @@ thread_id vm_fork()
 	return res;
 }
 
-static const char sAppPath[] = "/boot/system/runtime/UserlandVM";
+static const char sAppPath[] = "UserlandVM";
 
 thread_id vm_load_image(const char* const* flatArgs, size_t flatArgsSize, int32 argCount, int32 envCount, int32 priority, uint32 flags, port_id errorPort, uint32 errorToken)
 {
@@ -303,18 +304,46 @@ void VirtualCpuX86Test();
 int main(int argc, char **argv, char **env)
 {
 	srand(time(NULL));
+	
+	char **curArgv = argv;
+	char **endArgv = argv + argc;
 
-	if (argc <= 1) {
+	// skip program self name
+	curArgv++;
+
+	if (endArgv - curArgv <= 0) {
 		VirtualCpuX86Test();
 		return 0;
 	}
 
-	ObjectDeleter<ElfImage> image(ElfImage::Load("/boot/system/runtime_loader"));
+	CObjectDeleter<void, int, dlclose> virtualCpuAddon;
+	const char *addonName = "./librvvm2.so";
+	if (endArgv - curArgv >= 1 && strcmp(curArgv[0], "--engine") == 0) {
+		curArgv++;
+		if (endArgv - curArgv <= 0) {
+			fprintf(stderr, "argument missing\n");
+			return 1;
+		}
+		addonName = curArgv[0];
+		curArgv++;
+	}
+	virtualCpuAddon.SetTo(dlopen(addonName, 0));
+	if (!virtualCpuAddon.IsSet()) {
+		fprintf(stderr, "can't load virtual CPU add-on \"%s\"\n", addonName);
+		return 1;
+	}
+	*(void**)&sInstantiateVirtualCpuRiscv = dlsym(virtualCpuAddon.Get(), "instantiate_virtual_cpu_riscv");
+	if (sInstantiateVirtualCpuRiscv == NULL) {
+		fprintf(stderr, "bad virtual CPU add-on \"%s\"\n", addonName);
+		return 1;
+	}
+
+	ObjectDeleter<ElfImage> image(ElfImage::Load("../runtime_loader.riscv64"));
 
 	user_space_program_args args{};
 	ArrayDeleter<uint8> argsMem;
 	//char *env[] = {"A=1", NULL};
-	BuildArgs(argsMem, args, argv + 1, env);
+	BuildArgs(argsMem, args, curArgv, env);
 
 	void *commpage = __gCommPageAddress;
 #if 0
@@ -330,13 +359,13 @@ int main(int argc, char **argv, char **env)
 		.sa_sigaction = (__siginfo_handler_t)SignalHandler,
 		.sa_flags = SA_SIGINFO
 	};
-	for (int i = 0; i < signals[i] != 0; i++) {
+	for (int i = 0; signals[i] != 0; i++) {
 		sigaction(signals[i], &action, &oldAction[i]);
 	}
 
 	status_t res = HaikuThreadStart(NULL, (addr_t)image->GetEntry(), (addr_t)&args, (addr_t)commpage);
 
-	for (int i = 0; i < signals[i] != 0; i++) {
+	for (int i = 0; signals[i] != 0; i++) {
 		sigaction(signals[i], &oldAction[i], NULL);
 	}
 
