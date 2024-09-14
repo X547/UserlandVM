@@ -22,12 +22,19 @@
 #include <private/libroot/libroot_private.h>
 #include <private/system/commpage_defs.h>
 #include <private/system/arch/riscv64/arch_commpage_defs.h>
+#include <private/system/real_time_data.h>
 
 #include "Loader.h"
 #include "Syscalls.h"
 #include "VirtualCpuRiscV.h"
 
 #define CheckRet(err) {status_t _err = (err); if (_err < B_OK) return _err;}
+
+
+struct riscv64_real_time_data {
+	bigtime_t system_time_offset;
+	uint64    system_time_conversion_factor;
+};
 
 
 static VirtualCpuRiscV *(*sInstantiateVirtualCpuRiscv)();
@@ -86,7 +93,7 @@ void StackTrace()
 	uint64 pc = tCpu->Pc();
 	uint64 sp = tCpu->Regs()[2];
 	uint64 fp = tCpu->Regs()[8];
-	
+
 	for (;;) {
 		printf("FP: %#" B_PRIx64 ", PC: ", fp); WritePC(pc); printf("\n");
 		if (fp == 0) break;
@@ -144,7 +151,7 @@ status_t HaikuThreadStart(pthread_t pthread, uint64 entry, uint64 arg1, uint64 a
 	tls[TLS_USER_THREAD_SLOT] = (addr_t)&userThread;
 
 	static uint32 threadExitCode[] = {
-		0x03800293, // addi	t0, zero, 56 // _kern_exit_thread
+		0x03b00293, // addi	t0, zero, 59 // _kern_exit_thread
 		0x00000073, // ecall
 	};
 
@@ -268,7 +275,7 @@ void BuildArgs(ArrayDeleter<uint8> &mem, user_space_program_args &args, char **a
 	for (size_t i = 0; i < envCnt; i++) {
 		argSize += strlen(env[i]) + 1;
 	}
-	
+
 	mem.SetTo(new uint8[sizeof(void*)*(argCnt + envCnt + 2) + argSize]);
 	char **outArgs = (char**)&mem[0];
 	char *outChars = (char*)&mem[sizeof(void*)*(argCnt + envCnt + 2)];
@@ -286,7 +293,7 @@ void BuildArgs(ArrayDeleter<uint8> &mem, user_space_program_args &args, char **a
 		outChars += len;
 	}
 	*outArgs = NULL; outArgs++;
-	
+
 	char buf[B_PATH_NAME_LENGTH];
 	strcpy(buf, argv[0]);
 	strcpy(args.program_name, basename(buf));
@@ -304,7 +311,7 @@ void VirtualCpuX86Test();
 int main(int argc, char **argv, char **env)
 {
 	srand(time(NULL));
-	
+
 	char **curArgv = argv;
 	char **endArgv = argv + argc;
 
@@ -345,13 +352,19 @@ int main(int argc, char **argv, char **env)
 	//char *env[] = {"A=1", NULL};
 	BuildArgs(argsMem, args, curArgv, env);
 
-	void *commpage = __gCommPageAddress;
-#if 0
-	AreaDeleter stackArea(create_area("guest commpage", &commpage, B_ANY_ADDRESS, COMMPAGE_SIZE, B_NO_LOCK, B_READ_AREA | B_WRITE_AREA));
+	void *hostCommpage = __gCommPageAddress;
+	real_time_data *hostRtData = (real_time_data*)(((uint64*)hostCommpage)[COMMPAGE_ENTRY_REAL_TIME_DATA] + (uint8*)hostCommpage);
+	
+	void *commpage;
+	AreaDeleter commpageArea(create_area("guest commpage", &commpage, B_ANY_ADDRESS, COMMPAGE_SIZE, B_NO_LOCK, B_READ_AREA | B_WRITE_AREA));
+
+	riscv64_real_time_data *rtData = (riscv64_real_time_data*)((uint64*)commpage + COMMPAGE_TABLE_ENTRIES);
+	rtData->system_time_offset = hostRtData->arch_data.system_time_offset;
+	rtData->system_time_conversion_factor = 1ULL << 32;
+
 	((uint64*)commpage)[COMMPAGE_ENTRY_MAGIC] = COMMPAGE_SIGNATURE;
 	((uint64*)commpage)[COMMPAGE_ENTRY_VERSION] = COMMPAGE_VERSION;
-	((uint64*)commpage)[COMMPAGE_ENTRY_REAL_TIME_DATA] = 0;
-#endif
+	((uint64*)commpage)[COMMPAGE_ENTRY_REAL_TIME_DATA] = (uint8*)rtData - (uint8*)commpage;
 
 	int signals[] = {/*SIGILL, SIGSEGV,*/ 0};
 	struct sigaction oldAction[B_COUNT_OF(signals)];

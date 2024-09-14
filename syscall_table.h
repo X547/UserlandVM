@@ -1,4 +1,4 @@
-#define SYSCALL_COUNT 279
+#define SYSCALL_COUNT 286
 
 #ifndef _ASSEMBLER
 
@@ -66,6 +66,33 @@ const extended_syscall_info kExtendedSyscallInfos[] = {
 		}
 	},
 	{
+		"_kern_event_queue_create", 1,
+		{ 4, 8, B_INT32_TYPE },
+		{
+			{ 0, 4, 8, B_INT32_TYPE },
+		}
+	},
+	{
+		"_kern_event_queue_select", 3,
+		{ 4, 8, B_INT32_TYPE },
+		{
+			{ 0, 4, 8, B_INT32_TYPE },
+			{ 8, 8, 8, B_POINTER_TYPE },
+			{ 16, 4, 8, B_INT32_TYPE },
+		}
+	},
+	{
+		"_kern_event_queue_wait", 5,
+		{ 8, 8, B_INT64_TYPE },
+		{
+			{ 0, 4, 8, B_INT32_TYPE },
+			{ 8, 8, 8, B_POINTER_TYPE },
+			{ 16, 4, 8, B_INT32_TYPE },
+			{ 24, 4, 8, B_INT32_TYPE },
+			{ 32, 8, 8, B_INT64_TYPE },
+		}
+	},
+	{
 		"_kern_mutex_lock", 4,
 		{ 4, 8, B_INT32_TYPE },
 		{
@@ -76,7 +103,7 @@ const extended_syscall_info kExtendedSyscallInfos[] = {
 		}
 	},
 	{
-		"_kern_mutex_unlock", 2,
+		"_kern_mutex_unblock", 2,
 		{ 4, 8, B_INT32_TYPE },
 		{
 			{ 0, 8, 8, B_POINTER_TYPE },
@@ -84,14 +111,15 @@ const extended_syscall_info kExtendedSyscallInfos[] = {
 		}
 	},
 	{
-		"_kern_mutex_switch_lock", 5,
+		"_kern_mutex_switch_lock", 6,
 		{ 4, 8, B_INT32_TYPE },
 		{
 			{ 0, 8, 8, B_POINTER_TYPE },
-			{ 8, 8, 8, B_POINTER_TYPE },
-			{ 16, 8, 8, B_STRING_TYPE },
-			{ 24, 4, 8, B_INT32_TYPE },
-			{ 32, 8, 8, B_INT64_TYPE },
+			{ 8, 4, 8, B_INT32_TYPE },
+			{ 16, 8, 8, B_POINTER_TYPE },
+			{ 24, 8, 8, B_STRING_TYPE },
+			{ 32, 4, 8, B_INT32_TYPE },
+			{ 40, 8, 8, B_INT64_TYPE },
 		}
 	},
 	{
@@ -105,10 +133,11 @@ const extended_syscall_info kExtendedSyscallInfos[] = {
 		}
 	},
 	{
-		"_kern_mutex_sem_release", 1,
+		"_kern_mutex_sem_release", 2,
 		{ 4, 8, B_INT32_TYPE },
 		{
 			{ 0, 8, 8, B_POINTER_TYPE },
+			{ 8, 4, 8, B_INT32_TYPE },
 		}
 	},
 	{
@@ -510,6 +539,16 @@ const extended_syscall_info kExtendedSyscallInfos[] = {
 		}
 	},
 	{
+		"_kern_wait_for_thread_etc", 4,
+		{ 4, 8, B_INT32_TYPE },
+		{
+			{ 0, 4, 8, B_INT32_TYPE },
+			{ 8, 4, 8, B_INT32_TYPE },
+			{ 16, 8, 8, B_INT64_TYPE },
+			{ 24, 8, 8, B_POINTER_TYPE },
+		}
+	},
+	{
 		"_kern_has_data", 1,
 		{ 1, 8, B_INT8_TYPE },
 		{
@@ -560,19 +599,21 @@ const extended_syscall_info kExtendedSyscallInfos[] = {
 		}
 	},
 	{
-		"_kern_get_team_info", 2,
+		"_kern_get_team_info", 3,
 		{ 4, 8, B_INT32_TYPE },
 		{
 			{ 0, 4, 8, B_INT32_TYPE },
 			{ 8, 8, 8, B_POINTER_TYPE },
+			{ 16, 8, 8, B_INT64_TYPE },
 		}
 	},
 	{
-		"_kern_get_next_team_info", 2,
+		"_kern_get_next_team_info", 3,
 		{ 4, 8, B_INT32_TYPE },
 		{
 			{ 0, 8, 8, B_POINTER_TYPE },
 			{ 8, 8, 8, B_POINTER_TYPE },
+			{ 16, 8, 8, B_INT64_TYPE },
 		}
 	},
 	{
@@ -594,6 +635,30 @@ const extended_syscall_info kExtendedSyscallInfos[] = {
 			{ 16, 8, 8, B_POINTER_TYPE },
 			{ 24, 8, 8, B_INT64_TYPE },
 			{ 32, 8, 8, B_POINTER_TYPE },
+		}
+	},
+	{
+		"_kern_get_cpu", 0,
+		{ 4, 8, B_INT32_TYPE },
+		{
+		}
+	},
+	{
+		"_kern_get_thread_affinity", 3,
+		{ 4, 8, B_INT32_TYPE },
+		{
+			{ 0, 4, 8, B_INT32_TYPE },
+			{ 8, 8, 8, B_POINTER_TYPE },
+			{ 16, 8, 8, B_INT64_TYPE },
+		}
+	},
+	{
+		"_kern_set_thread_affinity", 3,
+		{ 4, 8, B_INT32_TYPE },
+		{
+			{ 0, 4, 8, B_INT32_TYPE },
+			{ 8, 8, 8, B_POINTER_TYPE },
+			{ 16, 8, 8, B_INT64_TYPE },
 		}
 	},
 	{

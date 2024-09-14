@@ -40,7 +40,7 @@ VirtualCpuRiscVRvvm2::~VirtualCpuRiscVRvvm2()
 
 uint64 &VirtualCpuRiscVRvvm2::Pc() {return fPc;}
 uint64 *VirtualCpuRiscVRvvm2::Regs() {return fRegs;}
-double *VirtualCpuRiscVRvvm2::FRegs() {return (double*)fFRegs;}
+double *VirtualCpuRiscVRvvm2::FRegs() {return reinterpret_cast<double*>(fFRegs);}
 int VirtualCpuRiscVRvvm2::Cause() {return fCause;}
 uint64 VirtualCpuRiscVRvvm2::Tval() {return fTval;}
 
@@ -60,6 +60,17 @@ void VirtualCpuRiscVRvvm2::Run()
 	for (uint32 i = 0; i < 32; i++)
 		fFRegs[i] = rvvm_read_cpu_reg(fCpu, RVVM_REGID_F0 + i);
 	fTval = rvvm_read_cpu_reg(fCpu, RVVM_REGID_TVAL);
+
+	switch (fCause) {
+		// ECALL
+		case 0x8:
+		case 0x9:
+		case 0xa:
+		case 0xb:
+			fPc += 4;
+		default:
+			;
+	}
 }
 
 

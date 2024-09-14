@@ -26,7 +26,7 @@ private:
 	} sMachine;
 
 	BReference<Machine> fMachine;
-	rvvm_cpu_handle_t fCpu{};
+	rvvm_hart_t *fCpu{};
 
 	uint64 fPc{};
 	uint64 fRegs[32]{};
